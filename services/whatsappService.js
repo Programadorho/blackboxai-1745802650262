@@ -75,11 +75,13 @@ export async function handleIncomingMessage(req, res) {
       sessions[from] = {
         history: [], // Array para almacenar los mensajes
         greeted: false,
-        askedIfMember: false, // Nuevo estado para rastrear si ya se preguntó por la membresía
+        askedIfMember: false, // Nuevo estado
         askedBusiness: false,
         businessInfoProvided: false
       };
     }
+
+    console.log(`ℹ️ Estado de la sesión de ${from} al recibir mensaje:`, sessions[from]);
 
     // Capturar mensaje recibido
     const userMessage = message.text?.body?.toLowerCase() || '[Contenido no textual recibido]';
@@ -99,6 +101,7 @@ export async function handleIncomingMessage(req, res) {
       sessions[from].history.push({ type: 'sent', message: greeting });
       sessions[from].greeted = true;
       saveSessions(); // Guardar inmediatamente después de saludar
+      console.log(`ℹ️ Se saludó a ${from}, nuevo estado de greeted:`, sessions[from].greeted);
     }
 
     // Preguntar si ya pertenece al programa SOLO si no se ha preguntado antes
@@ -108,7 +111,10 @@ export async function handleIncomingMessage(req, res) {
       sessions[from].history.push({ type: 'sent', message: membershipQuestion });
       sessions[from].askedIfMember = true;
       saveSessions(); // Guardar inmediatamente después de preguntar por la membresía
-      return res.sendStatus(200); // Cortar aquí para que no siga con la pregunta del negocio inmediatamente
+      console.log(`ℹ️ Se preguntó a ${from} sobre la membresía, nuevo estado de askedIfMember:`, sessions[from].askedIfMember);
+      return res.sendStatus(200); // Cortar aquí
+    } else {
+      console.log(`ℹ️ Ya se preguntó a ${from} sobre la membresía.`);
     }
 
     // Detectar palabras clave de ayuda y preguntar sobre el negocio SOLO si no ha preguntado antes Y ya se le preguntó sobre su membresía
@@ -120,7 +126,10 @@ export async function handleIncomingMessage(req, res) {
       sessions[from].history.push({ type: 'sent', message: businessQuestion });
       sessions[from].askedBusiness = true;
       saveSessions(); // Guardar inmediatamente después de preguntar
-      return res.sendStatus(200); // Cortamos aquí para que no procese doble
+      console.log(`ℹ️ Se preguntó a ${from} sobre el negocio, nuevo estado de askedBusiness:`, sessions[from].askedBusiness);
+      return res.sendStatus(200); // Cortamos aquí
+    } else if (ayudaKeywords.some(keyword => userMessage.includes(keyword)) && sessions[from].askedIfMember && sessions[from].askedBusiness) {
+      console.log(`ℹ️ Ya se preguntó a ${from} sobre el negocio.`);
     }
 
     // Procesamiento normal del mensaje
