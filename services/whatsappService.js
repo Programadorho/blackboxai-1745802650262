@@ -80,7 +80,7 @@ export async function handleIncomingMessage(req, res) {
     sessions[from].history.push({ type: 'received', message: userMessage });
     saveSessions();
 
-    // Si Mario preguntó sobre el negocio y ahora recibe una respuesta, marca como respondido
+    // Si Mario preguntó sobre el negocio y ahora recibe una respuesta, marcar como respondido
     if (sessions[from].askedBusiness && !sessions[from].businessInfoProvided) {
       sessions[from].businessInfoProvided = true;
       saveSessions();
@@ -104,7 +104,7 @@ export async function handleIncomingMessage(req, res) {
       sessions[from].askedBusiness = true;
       sessions[from].history.push({ type: 'sent', message: question });
       saveSessions();
-      return res.sendStatus(200);
+      return res.sendStatus(200); // Cortamos aquí para que no procese doble
     }
 
     // Procesamiento normal del mensaje
@@ -210,11 +210,12 @@ export async function sendTextMessage(to, text) {
     };
     const headers = {
       Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-      'Content-Type: application/json',
+      'Content-Type': 'application/json',
     };
     await axios.post(url, data, { headers });
   } catch (error) {
     console.error('🚨 Error sending text message:', error.response?.data || error.message);
   }
 }
+
 
