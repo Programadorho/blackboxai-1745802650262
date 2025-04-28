@@ -11,9 +11,19 @@ const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const WHATSAPP_VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 const WHATSAPP_API_BASE = 'https://graph.facebook.com/v17.0';
 
-// 🧠 Memoria de sesiones
-const sessions = {}; 
-// Estructura: { "numero_usuario": { greeted: true/false, history: [{ type: 'sent'/'received', message: 'texto' }] } }
+const SESSIONS_FILE = './sessions.json';
+let sessions = {};
+
+// Cargar sesiones si existen
+if (fs.existsSync(SESSIONS_FILE)) {
+  const data = fs.readFileSync(SESSIONS_FILE, 'utf-8');
+  sessions = JSON.parse(data);
+  console.log('✅ Sesiones cargadas desde sessions.json');
+}
+
+function saveSessions() {
+  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
+}
 
 // Verify webhook for GET challenge
 export function verifyWebhook(req, res) {
@@ -60,12 +70,13 @@ export async function handleIncomingMessage(req, res) {
 
     // Inicializar sesión si no existe
     if (!sessions[from]) {
-      sessions[from] = { greeted: false, history: [] };
+      sessions[from] = { greeted: false, history: [], askedBusiness: false };
     }
 
-    // Guardar mensaje recibido en historial
-    const userMessage = message.text?.body || '[Contenido no textual recibido]';
+    const userMessage = message.text?.body?.toLowerCase() || '[Contenido no textual recibido]';
     sessions[from].history.push({ type: 'received', message: userMessage });
+
+    saveSessions();
 
     // Saludar solo una vez
     if (!sessions[from].greeted) {
@@ -73,6 +84,19 @@ export async function handleIncomingMessage(req, res) {
       await sendTextMessage(from, greeting);
       sessions[from].greeted = true;
       sessions[from].history.push({ type: 'sent', message: greeting });
+      saveSessions();
+    }
+
+    // NUEVA LÓGICA: detectar si piden ayuda
+    const ayudaKeywords = ["ayuda", "asesoría", "vender", "empezar negocio", "quiero vender", "necesito ayuda"];
+
+    if (ayudaKeywords.some(keyword => userMessage.includes(keyword)) && !sessions[from].askedBusiness) {
+      const question = "¡Genial que quieras avanzar! 🤩 Para poder asesorarte mejor, ¿podrías contarme un poco sobre tu negocio o qué productos deseas vender? 🚀";
+      await sendTextMessage(from, question);
+      sessions[from].askedBusiness = true; // Marcamos que ya le preguntamos
+      sessions[from].history.push({ type: 'sent', message: question });
+      saveSessions();
+      return res.sendStatus(200); // Cortamos aquí para no seguir respondiendo normal
     }
 
     try {
@@ -80,6 +104,7 @@ export async function handleIncomingMessage(req, res) {
         const responseText = await processTextMessage(userMessage);
         await sendTextMessage(from, responseText);
         sessions[from].history.push({ type: 'sent', message: responseText });
+        saveSessions();
 
       } else if (message.type === 'audio' || message.type === 'voice') {
         const mediaId = message.audio?.id || message.voice?.id;
@@ -89,6 +114,7 @@ export async function handleIncomingMessage(req, res) {
           const responseText = await processTextMessage(transcription);
           await sendTextMessage(from, responseText);
           sessions[from].history.push({ type: 'sent', message: responseText });
+          saveSessions();
           fs.unlink(audioPath, (err) => {
             if (err) console.error('Error deleting audio file:', err);
           });
@@ -100,6 +126,7 @@ export async function handleIncomingMessage(req, res) {
           const responseText = await processImageMessage(imagePath);
           await sendTextMessage(from, responseText);
           sessions[from].history.push({ type: 'sent', message: responseText });
+          saveSessions();
           fs.unlink(imagePath, (err) => {
             if (err) console.error('Error deleting image file:', err);
           });
@@ -109,12 +136,14 @@ export async function handleIncomingMessage(req, res) {
         const unsupportedMessage = '👋 Hola, por ahora solo puedo procesar mensajes de texto, audios e imágenes.';
         await sendTextMessage(from, unsupportedMessage);
         sessions[from].history.push({ type: 'sent', message: unsupportedMessage });
+        saveSessions();
       }
     } catch (processingError) {
       console.error('🚨 Error during message processing:', processingError);
       const errorMessage = '⚠️ Hubo un problema procesando tu mensaje. Intenta nuevamente más tarde.';
       await sendTextMessage(from, errorMessage);
       sessions[from].history.push({ type: 'sent', message: errorMessage });
+      saveSessions();
     }
 
     res.sendStatus(200);
