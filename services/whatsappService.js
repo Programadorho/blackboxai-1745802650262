@@ -72,7 +72,12 @@ export async function handleIncomingMessage(req, res) {
 
     // Inicializar sesión si no existe
     if (!sessions[from]) {
-      sessions[from] = { greeted: false, history: [], askedBusiness: false, businessInfoProvided: false };
+      sessions[from] = {
+        history: [], // Array para almacenar los mensajes
+        greeted: false,
+        askedBusiness: false,
+        businessInfoProvided: false
+      };
     }
 
     // Capturar mensaje recibido
@@ -90,8 +95,8 @@ export async function handleIncomingMessage(req, res) {
     if (!sessions[from].greeted) {
       const greeting = "¡Hola! 👋 Soy *Mario*, agente del equipo de **Hernán Oviedo**. Estoy aquí para acompañarte en tu proceso como parte de nuestro programa *Negocios Híbridos* 🚀.\n\nMi misión es ayudarte a llevar tu negocio físico al mundo digital, paso a paso y de manera efectiva. ¡Vamos a hacerlo juntos!";
       await sendTextMessage(from, greeting);
-      sessions[from].greeted = true;
       sessions[from].history.push({ type: 'sent', message: greeting });
+      sessions[from].greeted = true;
       saveSessions(); // Guardar inmediatamente después de saludar
     }
 
@@ -101,8 +106,8 @@ export async function handleIncomingMessage(req, res) {
     if (ayudaKeywords.some(keyword => userMessage.includes(keyword)) && !sessions[from].askedBusiness && !sessions[from].businessInfoProvided) {
       const question = "¡Genial que quieras avanzar! 🤩 Para poder asesorarte mejor, ¿podrías contarme un poco sobre tu negocio o qué productos deseas vender? 🚀";
       await sendTextMessage(from, question);
-      sessions[from].askedBusiness = true;
       sessions[from].history.push({ type: 'sent', message: question });
+      sessions[from].askedBusiness = true;
       saveSessions(); // Guardar inmediatamente después de preguntar
       return res.sendStatus(200); // Cortamos aquí para que no procese doble
     }
@@ -110,7 +115,7 @@ export async function handleIncomingMessage(req, res) {
     // Procesamiento normal del mensaje
     try {
       if (message.type === 'text') {
-        const responseText = await processTextMessage(userMessage);
+        const responseText = await processTextMessage(userMessage, sessions[from].history); // Pasar el historial
         await sendTextMessage(from, responseText);
         sessions[from].history.push({ type: 'sent', message: responseText });
         saveSessions(); // Guardar después de enviar la respuesta
@@ -119,7 +124,7 @@ export async function handleIncomingMessage(req, res) {
         if (mediaId) {
           const audioPath = await downloadMedia(mediaId, 'audio');
           const transcription = await processAudioMessage(audioPath);
-          const responseText = await processTextMessage(transcription);
+          const responseText = await processTextMessage(transcription, sessions[from].history); // Pasar el historial
           await sendTextMessage(from, responseText);
           sessions[from].history.push({ type: 'sent', message: responseText });
           saveSessions(); // Guardar después de enviar la respuesta al audio
@@ -131,7 +136,7 @@ export async function handleIncomingMessage(req, res) {
         const mediaId = message.image?.id;
         if (mediaId) {
           const imagePath = await downloadMedia(mediaId, 'image');
-          const responseText = await processImageMessage(imagePath);
+          const responseText = await processImageMessage(imagePath, sessions[from].history); // Pasar el historial
           await sendTextMessage(from, responseText);
           sessions[from].history.push({ type: 'sent', message: responseText });
           saveSessions(); // Guardar después de enviar la respuesta a la imagen
