@@ -76,8 +76,7 @@ export async function handleIncomingMessage(req, res) {
         history: [], // Array para almacenar los mensajes
         greeted: false,
         askedIfMember: false, // Nuevo estado
-        askedBusiness: false,
-        businessInfoProvided: false
+        isMember: null, // Para guardar la respuesta sobre la membresía
       };
     }
 
@@ -88,13 +87,7 @@ export async function handleIncomingMessage(req, res) {
     sessions[from].history.push({ type: 'received', message: userMessage });
     saveSessions(); // Guardar inmediatamente después de recibir el mensaje
 
-    // Si Mario preguntó sobre el negocio y ahora recibe una respuesta, marcar como respondido
-    if (sessions[from].askedBusiness && !sessions[from].businessInfoProvided) {
-      sessions[from].businessInfoProvided = true;
-      saveSessions(); // Guardar inmediatamente después de marcar como respondido
-    }
-
-    // Saludar solo una vez
+    // Saludar solo la primera vez
     if (!sessions[from].greeted) {
       const greeting = "¡Hola! 👋 Soy *Mario*, agente del equipo de **Hernán Oviedo**. Estoy aquí para acompañarte en tu proceso como parte de nuestro programa *Negocios Híbridos* 🚀.\n\nMi misión es ayudarte a llevar tu negocio físico al mundo digital, paso a paso y de manera efectiva. ¡Vamos a hacerlo juntos!";
       await sendTextMessage(from, greeting);
@@ -104,35 +97,45 @@ export async function handleIncomingMessage(req, res) {
       console.log(`ℹ️ Se saludó a ${from}, nuevo estado de greeted:`, sessions[from].greeted);
     }
 
-    // Preguntar si ya pertenece al programa SOLO si no se ha preguntado antes
+    // Preguntar sobre la membresía solo una vez
     if (!sessions[from].askedIfMember) {
-      const membershipQuestion = "¿Ya eres parte de nuestro programa *Negocios Híbridos*? 🚀";
+      const membershipQuestion = "¿Ya perteneces al programa *Negocios Híbridos* de Hernán Oviedo? 🎯";
       await sendTextMessage(from, membershipQuestion);
       sessions[from].history.push({ type: 'sent', message: membershipQuestion });
       sessions[from].askedIfMember = true;
       saveSessions(); // Guardar inmediatamente después de preguntar por la membresía
       console.log(`ℹ️ Se preguntó a ${from} sobre la membresía, nuevo estado de askedIfMember:`, sessions[from].askedIfMember);
-      return res.sendStatus(200); // Cortar aquí
-    } else {
-      console.log(`ℹ️ Ya se preguntó a ${from} sobre la membresía.`);
+      return res.sendStatus(200); // Cortar aquí para la respuesta a la pregunta de membresía
     }
 
-    // Detectar palabras clave de ayuda y preguntar sobre el negocio SOLO si no ha preguntado antes Y ya se le preguntó sobre su membresía
-    const ayudaKeywords = ["ayuda", "asesoría", "vender", "empezar negocio", "quiero vender", "necesito ayuda"];
-
-    if (ayudaKeywords.some(keyword => userMessage.includes(keyword)) && sessions[from].askedIfMember && !sessions[from].askedBusiness && !sessions[from].businessInfoProvided) {
-      const businessQuestion = "¡Genial que quieras avanzar! 🤩 Para poder asesorarte mejor, ¿podrías contarme un poco sobre tu negocio o qué productos deseas vender? 🚀";
-      await sendTextMessage(from, businessQuestion);
-      sessions[from].history.push({ type: 'sent', message: businessQuestion });
-      sessions[from].askedBusiness = true;
-      saveSessions(); // Guardar inmediatamente después de preguntar
-      console.log(`ℹ️ Se preguntó a ${from} sobre el negocio, nuevo estado de askedBusiness:`, sessions[from].askedBusiness);
-      return res.sendStatus(200); // Cortamos aquí
-    } else if (ayudaKeywords.some(keyword => userMessage.includes(keyword)) && sessions[from].askedIfMember && sessions[from].askedBusiness) {
-      console.log(`ℹ️ Ya se preguntó a ${from} sobre el negocio.`);
+    // Lógica para manejar la respuesta a la pregunta de membresía
+    if (sessions[from].askedIfMember && sessions[from].isMember === null) {
+      const lowerUserMessage = userMessage.toLowerCase().trim();
+      if (lowerUserMessage === 'si' || lowerUserMessage === 'sí') {
+        sessions[from].isMember = true;
+        const congratsMessage = "¡Excelente decisión de transformar tu negocio! 🚀 ¿En qué paso te encuentras actualmente? Cuéntame para sugerirte algunas tareas sencillas para seguir avanzando. 😉";
+        await sendTextMessage(from, congratsMessage);
+        sessions[from].history.push({ type: 'sent', message: congratsMessage });
+        saveSessions();
+        return res.sendStatus(200);
+      } else if (lowerUserMessage === 'no') {
+        sessions[from].isMember = false;
+        const invitationMessage = "¡Entiendo! 😊 Te invito a unirte a nuestro programa *Negocios Híbridos* y comenzar a llevar tu negocio al mundo digital con nuestro acompañamiento personalizado, clases grabadas y sesiones en vivo para resolver todas tus dudas. ¡Es el momento de dar el salto! 🚀 ¿Te gustaría saber más sobre cómo unirte?";
+        await sendTextMessage(from, invitationMessage);
+        sessions[from].history.push({ type: 'sent', message: invitationMessage });
+        saveSessions();
+        return res.sendStatus(200);
+      } else {
+        // Si la respuesta no es clara, puedes dar una pequeña aclaración
+        const clarificationMessage = "Por favor, responde 'sí' o 'no' si ya perteneces al programa *Negocios Híbridos* de Hernán Oviedo. 🎯";
+        await sendTextMessage(from, clarificationMessage);
+        sessions[from].history.push({ type: 'sent', message: clarificationMessage });
+        saveSessions();
+        return res.sendStatus(200);
+      }
     }
 
-    // Procesamiento normal del mensaje
+    // Procesamiento normal del mensaje (después de manejar la pregunta de membresía)
     try {
       if (message.type === 'text') {
         const responseText = await processTextMessage(userMessage, sessions[from].history); // Pasar el historial
