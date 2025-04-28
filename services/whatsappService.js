@@ -2,13 +2,14 @@ import express from 'express';
 import bodyParser from 'body-parser';
 import axios from 'axios';
 
+// Iniciar el servidor Express
 const app = express();
 const port = process.env.PORT || 3000;
 
 // Middleware para procesar el cuerpo de la solicitud
 app.use(bodyParser.json());
 
-// Define el prompt del sistema para Mario IA
+// Define el prompt de Mario IA
 const agentPrompt = `
 # 🧠 Prompt de Sistema para "Mario IA"
 
@@ -178,5 +179,6 @@ async function sendMessageToUser(phone, message) {
 app.listen(port, () => {
   console.log(`Servidor escuchando en el puerto ${port}`);
 });
+
 
 
