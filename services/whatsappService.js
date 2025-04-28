@@ -11,6 +11,7 @@ const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const WHATSAPP_VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 const WHATSAPP_API_BASE = 'https://graph.facebook.com/v17.0';
 
+// 🧠 Manejo de sesiones en archivo JSON
 const SESSIONS_FILE = './sessions.json';
 let sessions = {};
 
@@ -21,6 +22,7 @@ if (fs.existsSync(SESSIONS_FILE)) {
   console.log('✅ Sesiones cargadas desde sessions.json');
 }
 
+// Función para guardar sesiones en archivo
 function saveSessions() {
   fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
 }
@@ -70,13 +72,19 @@ export async function handleIncomingMessage(req, res) {
 
     // Inicializar sesión si no existe
     if (!sessions[from]) {
-      sessions[from] = { greeted: false, history: [], askedBusiness: false };
+      sessions[from] = { greeted: false, history: [], askedBusiness: false, businessInfoProvided: false };
     }
 
+    // Capturar mensaje recibido
     const userMessage = message.text?.body?.toLowerCase() || '[Contenido no textual recibido]';
     sessions[from].history.push({ type: 'received', message: userMessage });
-
     saveSessions();
+
+    // Si Mario preguntó sobre el negocio y ahora recibe una respuesta, marca como respondido
+    if (sessions[from].askedBusiness && !sessions[from].businessInfoProvided) {
+      sessions[from].businessInfoProvided = true;
+      saveSessions();
+    }
 
     // Saludar solo una vez
     if (!sessions[from].greeted) {
@@ -87,18 +95,19 @@ export async function handleIncomingMessage(req, res) {
       saveSessions();
     }
 
-    // NUEVA LÓGICA: detectar si piden ayuda
+    // Detectar palabras clave de ayuda y preguntar sobre el negocio SOLO si no ha preguntado antes
     const ayudaKeywords = ["ayuda", "asesoría", "vender", "empezar negocio", "quiero vender", "necesito ayuda"];
 
-    if (ayudaKeywords.some(keyword => userMessage.includes(keyword)) && !sessions[from].askedBusiness) {
+    if (ayudaKeywords.some(keyword => userMessage.includes(keyword)) && !sessions[from].askedBusiness && !sessions[from].businessInfoProvided) {
       const question = "¡Genial que quieras avanzar! 🤩 Para poder asesorarte mejor, ¿podrías contarme un poco sobre tu negocio o qué productos deseas vender? 🚀";
       await sendTextMessage(from, question);
-      sessions[from].askedBusiness = true; // Marcamos que ya le preguntamos
+      sessions[from].askedBusiness = true;
       sessions[from].history.push({ type: 'sent', message: question });
       saveSessions();
-      return res.sendStatus(200); // Cortamos aquí para no seguir respondiendo normal
+      return res.sendStatus(200);
     }
 
+    // Procesamiento normal del mensaje
     try {
       if (message.type === 'text') {
         const responseText = await processTextMessage(userMessage);
@@ -201,10 +210,11 @@ export async function sendTextMessage(to, text) {
     };
     const headers = {
       Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-      'Content-Type': 'application/json',
+      'Content-Type: application/json',
     };
     await axios.post(url, data, { headers });
   } catch (error) {
     console.error('🚨 Error sending text message:', error.response?.data || error.message);
   }
 }
+
