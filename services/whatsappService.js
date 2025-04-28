@@ -75,6 +75,7 @@ export async function handleIncomingMessage(req, res) {
       sessions[from] = {
         history: [], // Array para almacenar los mensajes
         greeted: false,
+        askedIfMember: false, // Nuevo estado para rastrear si ya se preguntó por la membresía
         askedBusiness: false,
         businessInfoProvided: false
       };
@@ -100,13 +101,23 @@ export async function handleIncomingMessage(req, res) {
       saveSessions(); // Guardar inmediatamente después de saludar
     }
 
-    // Detectar palabras clave de ayuda y preguntar sobre el negocio SOLO si no ha preguntado antes
+    // Preguntar si ya pertenece al programa SOLO si no se ha preguntado antes
+    if (!sessions[from].askedIfMember) {
+      const membershipQuestion = "¿Ya eres parte de nuestro programa *Negocios Híbridos*? 🚀";
+      await sendTextMessage(from, membershipQuestion);
+      sessions[from].history.push({ type: 'sent', message: membershipQuestion });
+      sessions[from].askedIfMember = true;
+      saveSessions(); // Guardar inmediatamente después de preguntar por la membresía
+      return res.sendStatus(200); // Cortar aquí para que no siga con la pregunta del negocio inmediatamente
+    }
+
+    // Detectar palabras clave de ayuda y preguntar sobre el negocio SOLO si no ha preguntado antes Y ya se le preguntó sobre su membresía
     const ayudaKeywords = ["ayuda", "asesoría", "vender", "empezar negocio", "quiero vender", "necesito ayuda"];
 
-    if (ayudaKeywords.some(keyword => userMessage.includes(keyword)) && !sessions[from].askedBusiness && !sessions[from].businessInfoProvided) {
-      const question = "¡Genial que quieras avanzar! 🤩 Para poder asesorarte mejor, ¿podrías contarme un poco sobre tu negocio o qué productos deseas vender? 🚀";
-      await sendTextMessage(from, question);
-      sessions[from].history.push({ type: 'sent', message: question });
+    if (ayudaKeywords.some(keyword => userMessage.includes(keyword)) && sessions[from].askedIfMember && !sessions[from].askedBusiness && !sessions[from].businessInfoProvided) {
+      const businessQuestion = "¡Genial que quieras avanzar! 🤩 Para poder asesorarte mejor, ¿podrías contarme un poco sobre tu negocio o qué productos deseas vender? 🚀";
+      await sendTextMessage(from, businessQuestion);
+      sessions[from].history.push({ type: 'sent', message: businessQuestion });
       sessions[from].askedBusiness = true;
       saveSessions(); // Guardar inmediatamente después de preguntar
       return res.sendStatus(200); // Cortamos aquí para que no procese doble
@@ -123,7 +134,7 @@ export async function handleIncomingMessage(req, res) {
         const mediaId = message.audio?.id || message.voice?.id;
         if (mediaId) {
           const audioPath = await downloadMedia(mediaId, 'audio');
-          const transcription = await processAudioMessage(audioPath);
+          const transcription = await processAudioMessage(audioPath, sessions[from].history); // Pasar el historial
           const responseText = await processTextMessage(transcription, sessions[from].history); // Pasar el historial
           await sendTextMessage(from, responseText);
           sessions[from].history.push({ type: 'sent', message: responseText });
