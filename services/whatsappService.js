@@ -11,7 +11,7 @@ const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const WHATSAPP_VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 const WHATSAPP_API_BASE = 'https://graph.facebook.com/v17.0';
 
-// 🧠 Manejo de sesiones en archivo JSON
+// 🧠 Manejo de sesiones en archivo JSON (ahora solo para historial)
 const SESSIONS_FILE = './sessions.json';
 let sessions = {};
 
@@ -70,75 +70,21 @@ export async function handleIncomingMessage(req, res) {
 
     console.log(`📨 Received message from: ${from} - Type: ${message.type}`);
 
-    // Inicializar sesión si no existe
+    // Inicializar sesión si no existe (solo para historial ahora)
     if (!sessions[from]) {
-      sessions[from] = {
-        history: [], // Array para almacenar los mensajes
-        greeted: false,
-        askedIfMember: false, // Nuevo estado
-        isMember: null, // Para guardar la respuesta sobre la membresía
-      };
+      sessions[from] = { history: [] };
     }
-
-    console.log(`ℹ️ Estado de la sesión de ${from} al recibir mensaje:`, sessions[from]);
 
     // Capturar mensaje recibido
     const userMessage = message.text?.body?.toLowerCase() || '[Contenido no textual recibido]';
     sessions[from].history.push({ type: 'received', message: userMessage });
     saveSessions(); // Guardar inmediatamente después de recibir el mensaje
 
-    // Saludar solo la primera vez
-    if (!sessions[from].greeted) {
-      const greeting = "¡Hola! 👋 Soy *Mario*, agente del equipo de **Hernán Oviedo**. Estoy aquí para acompañarte en tu proceso como parte de nuestro programa *Negocios Híbridos* 🚀.\n\nMi misión es ayudarte a llevar tu negocio físico al mundo digital, paso a paso y de manera efectiva. ¡Vamos a hacerlo juntos!";
-      await sendTextMessage(from, greeting);
-      sessions[from].history.push({ type: 'sent', message: greeting });
-      sessions[from].greeted = true;
-      saveSessions(); // Guardar inmediatamente después de saludar
-      console.log(`ℹ️ Se saludó a ${from}, nuevo estado de greeted:`, sessions[from].greeted);
-    }
-
-    // Preguntar sobre la membresía solo una vez
-    if (!sessions[from].askedIfMember) {
-      const membershipQuestion = "¿Ya perteneces al programa *Negocios Híbridos* de Hernán Oviedo? 🎯";
-      await sendTextMessage(from, membershipQuestion);
-      sessions[from].history.push({ type: 'sent', message: membershipQuestion });
-      sessions[from].askedIfMember = true;
-      saveSessions(); // Guardar inmediatamente después de preguntar por la membresía
-      console.log(`ℹ️ Se preguntó a ${from} sobre la membresía, nuevo estado de askedIfMember:`, sessions[from].askedIfMember);
-      return res.sendStatus(200); // Cortar aquí para la respuesta a la pregunta de membresía
-    }
-
-    // Lógica para manejar la respuesta a la pregunta de membresía
-    if (sessions[from].askedIfMember && sessions[from].isMember === null) {
-      const lowerUserMessage = userMessage.toLowerCase().trim();
-      if (lowerUserMessage === 'si' || lowerUserMessage === 'sí') {
-        sessions[from].isMember = true;
-        const congratsMessage = "¡Excelente decisión de transformar tu negocio! 🚀 ¿En qué paso te encuentras actualmente? Cuéntame para sugerirte algunas tareas sencillas para seguir avanzando. 😉";
-        await sendTextMessage(from, congratsMessage);
-        sessions[from].history.push({ type: 'sent', message: congratsMessage });
-        saveSessions();
-        return res.sendStatus(200);
-      } else if (lowerUserMessage === 'no') {
-        sessions[from].isMember = false;
-        const invitationMessage = "¡Entiendo! 😊 Te invito a unirte a nuestro programa *Negocios Híbridos* y comenzar a llevar tu negocio al mundo digital con nuestro acompañamiento personalizado, clases grabadas y sesiones en vivo para resolver todas tus dudas. ¡Es el momento de dar el salto! 🚀 ¿Te gustaría saber más sobre cómo unirte?";
-        await sendTextMessage(from, invitationMessage);
-        sessions[from].history.push({ type: 'sent', message: invitationMessage });
-        saveSessions();
-        return res.sendStatus(200);
-      } else {
-        // Si la respuesta no es clara, puedes dar una pequeña aclaración
-        const clarificationMessage = "Por favor, responde 'sí' o 'no' si ya perteneces al programa *Negocios Híbridos* de Hernán Oviedo. 🎯";
-        await sendTextMessage(from, clarificationMessage);
-        sessions[from].history.push({ type: 'sent', message: clarificationMessage });
-        saveSessions();
-        return res.sendStatus(200);
-      }
-    }
-
-    // Procesamiento normal del mensaje (después de manejar la pregunta de membresía)
+    // Procesamiento del mensaje
     try {
+      let responseText = "";
       if (message.type === 'text') {
-        const responseText = await processTextMessage(userMessage, sessions[from].history); // Pasar el historial
+        responseText = await processTextMessage(userMessage, sessions[from].history);
         await sendTextMessage(from, responseText);
         sessions[from].history.push({ type: 'sent', message: responseText });
         saveSessions(); // Guardar después de enviar la respuesta
@@ -146,8 +92,8 @@ export async function handleIncomingMessage(req, res) {
         const mediaId = message.audio?.id || message.voice?.id;
         if (mediaId) {
           const audioPath = await downloadMedia(mediaId, 'audio');
-          const transcription = await processAudioMessage(audioPath, sessions[from].history); // Pasar el historial
-          const responseText = await processTextMessage(transcription, sessions[from].history); // Pasar el historial
+          const transcription = await processAudioMessage(audioPath, sessions[from].history);
+          responseText = await processTextMessage(transcription, sessions[from].history);
           await sendTextMessage(from, responseText);
           sessions[from].history.push({ type: 'sent', message: responseText });
           saveSessions(); // Guardar después de enviar la respuesta al audio
@@ -159,20 +105,20 @@ export async function handleIncomingMessage(req, res) {
         const mediaId = message.image?.id;
         if (mediaId) {
           const imagePath = await downloadMedia(mediaId, 'image');
-          const responseText = await processImageMessage(imagePath, sessions[from].history); // Pasar el historial
+          responseText = await processImageMessage(imagePath, sessions[from].history);
           await sendTextMessage(from, responseText);
           sessions[from].history.push({ type: 'sent', message: responseText });
           saveSessions(); // Guardar después de enviar la respuesta a la imagen
           fs.unlink(imagePath, (err) => {
             if (err) console.error('Error deleting image file:', err);
           });
+        } else {
+          console.log(`ℹ️ Unsupported message type received: ${message.type}`);
+          const unsupportedMessage = '👋 Hola, por ahora solo puedo procesar mensajes de texto, audios e imágenes.';
+          await sendTextMessage(from, unsupportedMessage);
+          sessions[from].history.push({ type: 'sent', message: unsupportedMessage });
+          saveSessions(); // Guardar después de enviar el mensaje de no soportado
         }
-      } else {
-        console.log(`ℹ️ Unsupported message type received: ${message.type}`);
-        const unsupportedMessage = '👋 Hola, por ahora solo puedo procesar mensajes de texto, audios e imágenes.';
-        await sendTextMessage(from, unsupportedMessage);
-        sessions[from].history.push({ type: 'sent', message: unsupportedMessage });
-        saveSessions(); // Guardar después de enviar el mensaje de no soportado
       }
     } catch (processingError) {
       console.error('🚨 Error during message processing:', processingError);
