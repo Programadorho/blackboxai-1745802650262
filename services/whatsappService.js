@@ -78,12 +78,12 @@ export async function handleIncomingMessage(req, res) {
     // Capturar mensaje recibido
     const userMessage = message.text?.body?.toLowerCase() || '[Contenido no textual recibido]';
     sessions[from].history.push({ type: 'received', message: userMessage });
-    saveSessions();
+    saveSessions(); // Guardar inmediatamente después de recibir el mensaje
 
     // Si Mario preguntó sobre el negocio y ahora recibe una respuesta, marcar como respondido
     if (sessions[from].askedBusiness && !sessions[from].businessInfoProvided) {
       sessions[from].businessInfoProvided = true;
-      saveSessions();
+      saveSessions(); // Guardar inmediatamente después de marcar como respondido
     }
 
     // Saludar solo una vez
@@ -92,7 +92,7 @@ export async function handleIncomingMessage(req, res) {
       await sendTextMessage(from, greeting);
       sessions[from].greeted = true;
       sessions[from].history.push({ type: 'sent', message: greeting });
-      saveSessions();
+      saveSessions(); // Guardar inmediatamente después de saludar
     }
 
     // Detectar palabras clave de ayuda y preguntar sobre el negocio SOLO si no ha preguntado antes
@@ -103,7 +103,7 @@ export async function handleIncomingMessage(req, res) {
       await sendTextMessage(from, question);
       sessions[from].askedBusiness = true;
       sessions[from].history.push({ type: 'sent', message: question });
-      saveSessions();
+      saveSessions(); // Guardar inmediatamente después de preguntar
       return res.sendStatus(200); // Cortamos aquí para que no procese doble
     }
 
@@ -113,8 +113,7 @@ export async function handleIncomingMessage(req, res) {
         const responseText = await processTextMessage(userMessage);
         await sendTextMessage(from, responseText);
         sessions[from].history.push({ type: 'sent', message: responseText });
-        saveSessions();
-
+        saveSessions(); // Guardar después de enviar la respuesta
       } else if (message.type === 'audio' || message.type === 'voice') {
         const mediaId = message.audio?.id || message.voice?.id;
         if (mediaId) {
@@ -123,7 +122,7 @@ export async function handleIncomingMessage(req, res) {
           const responseText = await processTextMessage(transcription);
           await sendTextMessage(from, responseText);
           sessions[from].history.push({ type: 'sent', message: responseText });
-          saveSessions();
+          saveSessions(); // Guardar después de enviar la respuesta al audio
           fs.unlink(audioPath, (err) => {
             if (err) console.error('Error deleting audio file:', err);
           });
@@ -135,7 +134,7 @@ export async function handleIncomingMessage(req, res) {
           const responseText = await processImageMessage(imagePath);
           await sendTextMessage(from, responseText);
           sessions[from].history.push({ type: 'sent', message: responseText });
-          saveSessions();
+          saveSessions(); // Guardar después de enviar la respuesta a la imagen
           fs.unlink(imagePath, (err) => {
             if (err) console.error('Error deleting image file:', err);
           });
@@ -145,14 +144,14 @@ export async function handleIncomingMessage(req, res) {
         const unsupportedMessage = '👋 Hola, por ahora solo puedo procesar mensajes de texto, audios e imágenes.';
         await sendTextMessage(from, unsupportedMessage);
         sessions[from].history.push({ type: 'sent', message: unsupportedMessage });
-        saveSessions();
+        saveSessions(); // Guardar después de enviar el mensaje de no soportado
       }
     } catch (processingError) {
       console.error('🚨 Error during message processing:', processingError);
       const errorMessage = '⚠️ Hubo un problema procesando tu mensaje. Intenta nuevamente más tarde.';
       await sendTextMessage(from, errorMessage);
       sessions[from].history.push({ type: 'sent', message: errorMessage });
-      saveSessions();
+      saveSessions(); // Guardar después de enviar el mensaje de error
     }
 
     res.sendStatus(200);
@@ -166,7 +165,7 @@ export async function handleIncomingMessage(req, res) {
 async function downloadMedia(mediaId, type) {
   try {
     console.log(`⬇️ Downloading media ID: ${mediaId}`);
-    
+
     const urlResponse = await axios.get(
       `${WHATSAPP_API_BASE}/${mediaId}`,
       {
