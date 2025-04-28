@@ -53,11 +53,7 @@ export async function handleIncomingMessage(req, res) {
     const message = messages[0];
     const from = message.from;
 
-    // Only respond to messages from the configured WhatsApp number
-    if (from !== WHATSAPP_MY_NUMBER) {
-      console.log(`Ignoring message from unauthorized number: ${from}`);
-      return res.sendStatus(200);
-    }
+   
 
     if (message.type === 'text') {
       const text = message.text.body;
