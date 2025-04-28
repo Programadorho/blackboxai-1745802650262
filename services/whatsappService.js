@@ -1,194 +1,182 @@
+import express from 'express';
+import bodyParser from 'body-parser';
 import axios from 'axios';
-import { processTextMessage, processAudioMessage, processImageMessage } from './openaiService.js';
-import dotenv from 'dotenv';
-import fs from 'fs';
-import path from 'path';
 
-dotenv.config();
+const app = express();
+const port = process.env.PORT || 3000;
 
-const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
-const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
-const WHATSAPP_VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
-const WHATSAPP_API_BASE = 'https://graph.facebook.com/v17.0';
+// Middleware para procesar el cuerpo de la solicitud
+app.use(bodyParser.json());
 
-// 🧠 Manejo de sesiones en archivo JSON (ahora solo para historial)
-const SESSIONS_FILE = './sessions.json';
-let sessions = {};
+// Define el prompt del sistema para Mario IA
+const agentPrompt = `
+# 🧠 Prompt de Sistema para "Mario IA"
 
-// Cargar sesiones si existen
-if (fs.existsSync(SESSIONS_FILE)) {
-  const data = fs.readFileSync(SESSIONS_FILE, 'utf-8');
-  sessions = JSON.parse(data);
-  console.log('✅ Sesiones cargadas desde sessions.json');
-}
+## 1️⃣ Perfil y Rol del Agente
+**Identidad**:  
+Mario IA es un agente conversacional especializado en acompañar a comerciantes de negocios físicos que desean aprender a vender por internet.
 
-// Función para guardar sesiones en archivo
-function saveSessions() {
-  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
-}
+**Funciones principales**:
+- Acompañar detalladamente pero de forma sencilla.
+- Explicar conceptos complejos en términos ultra simples.
+- Motivar, inspirar y empujar a tomar pequeños pasos inmediatos.
+- Detectar la etapa del usuario y personalizar la ayuda.
 
-// Verify webhook for GET challenge
-export function verifyWebhook(req, res) {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
+## 2️⃣ Tono, Estilo y Forma de Comunicarse
+- **Tono**: Cercano, amable, paciente (como un mentor accesible, no técnico).
+- **Estilo**: Frases cortas, claras, sin tecnicismos, con ejemplos cotidianos.
+- **Extensión**: Máximo 60 palabras por respuesta.
+- **Formato de cada respuesta**:  
+  - Breve explicación  
+  - Pregunta abierta que invite a avanzar.
+- **Actitud**: Cálida, positiva, motivadora.  
+  Celebrar cada avance y animar constantemente.
 
-  if (mode && token) {
-    if (mode === 'subscribe' && token === WHATSAPP_VERIFY_TOKEN) {
-      console.log('✅ Webhook verified successfully');
-      return res.status(200).send(challenge);
-    } else {
-      console.error('❌ Webhook verification failed');
-      return res.sendStatus(403);
-    }
+## 3️⃣ Estructura Básica de la Conversación
+**Inicio de conversación**:  
+Pregunta inicial:  
+> "¿Actualmente tienes redes sociales activas para tu negocio, como Instagram, Facebook o WhatsApp Business?"
+
+Según la respuesta:
+- No tiene redes sociales → "¿Te gustaría que empecemos creando tu primera cuenta para tu negocio?"
+- Tiene redes pero no publica ni vende → "¿Te gustaría que revisáramos juntos tu perfil para atraer más clientes?"
+- Publica pero no vende aún → "¿Te gustaría aprender a mejorar tus publicaciones para generar más interés?"
+- Ya vende algo online → "¿Te gustaría que optimizáramos tus procesos de cobro y envío para vender más y más rápido?"
+
+**Nivel de Avance**:
+- **Nivel 1**: Crear o mejorar presencia digital.
+- **Nivel 2**: Construir activos digitales (catálogo y cobro).
+- **Nivel 3**: Aprender a vender en línea (flujo simple).
+- **Nivel 4**: Optimizar procesos de entrega y pago.
+- **Nivel 5**: Invertir en publicidad digital de bajo costo.
+
+**Manejo de Objeciones**:
+| Objeción | Respuesta Motivadora |
+|:--------:|:--------------------:|
+| No sé de tecnología | "No te preocupes, yo te guío paso a paso. ¿Te gustaría empezar con lo más fácil?" |
+| Miedo a perder dinero | "Te enseño a invertir poco y seguro. ¿Quieres que hagamos un plan sencillo?" |
+| No tengo tiempo | "Con solo 30 minutos al día puedes avanzar. ¿Te ayudo a organizarlo?" |
+
+## 6️⃣ Formato Obligatorio en Cada Respuesta
+- Explicación breve (30-50 palabras).
+- Pregunta abierta de avance.
+- Frases positivas: "¡Vamos bien!", "¡Muy buen paso!", "¡Así se empieza!"
+
+## 7️⃣ Cierre Inteligente de Conversaciones
+Cuando el usuario quiera cerrar:
+- Felicitar cálidamente.
+- Proponer 3 objetivos sencillos.
+
+**Ejemplo de cierre**:
+> "¡Muy buen avance hoy!  
+Antes de irte, te propongo 3 objetivos sencillos:  
+1️⃣ Optimiza tu perfil de Instagram o Facebook.  
+2️⃣ Crea tu catálogo en WhatsApp Business.  
+3️⃣ Configura tu cuenta en Dropi.  
+¿Cuál quieres hacer primero? Estoy aquí para ayudarte."
+
+---
+
+## 8️⃣ Scripts Especializados por Tarea
+
+🎯 **Optimizar Perfil de Red Social**:
+> "Tu red social es tu vitrina.  
+Asegúrate de tener:  
+1️⃣ Foto de perfil clara.  
+2️⃣ Biografía que diga qué vendes y cómo contactarte.  
+3️⃣ Botón de contacto activo.  
+¿Quieres que te ayude a verificarlo ahora?"
+
+🎯 **Crear Catálogo en WhatsApp**:
+> "El catálogo es tu vitrina móvil.  
+Pasos:  
+1️⃣ Abre WhatsApp Business → Herramientas de empresa → Catálogo.  
+2️⃣ Agrega productos: foto, nombre, precio.  
+¿Subimos tu primer producto ahora mismo?"
+
+🎯 **Configurar Envíos con Dropi**:
+> "Con Dropi puedes enviar productos y cobrar contra entrega.  
+Pasos:  
+1️⃣ Crea tu cuenta en Dropi.co.  
+2️⃣ Completa tu perfil de negocio.  
+3️⃣ Registra tu primer pedido.  
+¿Quieres que lo hagamos paso a paso juntos?"
+`;
+
+let userStage = 1;  // La etapa actual del usuario
+
+// Ruta para manejar las solicitudes de webhook de WhatsApp
+app.post('/webhook', async (req, res) => {
+  const message = req.body; // El mensaje recibido de WhatsApp
+
+  // Verifica si el mensaje es de un usuario específico
+  const userPhone = message?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from;
+  const userText = message?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body;
+
+  if (userText) {
+    console.log(`Mensaje recibido: ${userText}`);
+    const responseText = await processUserMessage(userText);
+    await sendMessageToUser(userPhone, responseText);
   }
-  res.sendStatus(400);
+
+  res.sendStatus(200);
+});
+
+// Función para procesar el mensaje y generar una respuesta de Mario IA
+async function processUserMessage(userText) {
+  let response = "";
+
+  switch (userStage) {
+    case 1:
+      response = "¿Actualmente tienes redes sociales activas para tu negocio, como Instagram, Facebook o WhatsApp Business?";
+      break;
+    case 2:
+      response = "¿Te gustaría que te guíe para crear tu primer producto en el catálogo?";
+      break;
+    case 3:
+      response = "¿Te gustaría que te muestre cómo hacer tu primera publicación de venta paso a paso?";
+      break;
+    case 4:
+      response = "¿Te gustaría que te enseñe cómo registrar tu primer pedido en Dropi?";
+      break;
+    case 5:
+      response = "¿Te gustaría que preparemos juntos tu primer anuncio básico en Facebook?";
+      break;
+    default:
+      response = "¡Vamos bien! ¿En qué más te puedo ayudar?";
+      break;
+  }
+
+  return response;
 }
 
-// Handle incoming webhook POST events
-export async function handleIncomingMessage(req, res) {
+// Función para enviar mensajes a WhatsApp
+async function sendMessageToUser(phone, message) {
+  const url = `https://graph.facebook.com/v14.0/${process.env.WHATSAPP_BUSINESS_PHONE_ID}/messages`;
+  const token = process.env.WHATSAPP_ACCESS_TOKEN; // Tu token de acceso de WhatsApp API
+
+  const data = {
+    messaging_product: 'whatsapp',
+    to: phone,
+    text: { body: message }
+  };
+
   try {
-    const body = req.body;
-
-    if (body.object !== 'whatsapp_business_account') {
-      console.warn('⚠️ Received unknown object type');
-      return res.sendStatus(404);
-    }
-
-    const entry = body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value = changes?.value;
-    const messages = value?.messages;
-
-    if (!messages || messages.length === 0) {
-      console.log('ℹ️ No messages found');
-      return res.sendStatus(200);
-    }
-
-    const message = messages[0];
-    const from = message.from;
-
-    console.log(`📨 Received message from: ${from} - Type: ${message.type}`);
-
-    // Inicializar sesión si no existe (solo para historial ahora)
-    if (!sessions[from]) {
-      sessions[from] = { history: [] };
-    }
-
-    // Capturar mensaje recibido
-    const userMessage = message.text?.body?.toLowerCase() || '[Contenido no textual recibido]';
-    sessions[from].history.push({ type: 'received', message: userMessage });
-    saveSessions(); // Guardar inmediatamente después de recibir el mensaje
-
-    // Procesamiento del mensaje
-    try {
-      let responseText = "";
-      if (message.type === 'text') {
-        responseText = await processTextMessage(userMessage, sessions[from].history);
-        await sendTextMessage(from, responseText);
-        sessions[from].history.push({ type: 'sent', message: responseText });
-        saveSessions(); // Guardar después de enviar la respuesta
-      } else if (message.type === 'audio' || message.type === 'voice') {
-        const mediaId = message.audio?.id || message.voice?.id;
-        if (mediaId) {
-          const audioPath = await downloadMedia(mediaId, 'audio');
-          const transcription = await processAudioMessage(audioPath, sessions[from].history);
-          responseText = await processTextMessage(transcription, sessions[from].history);
-          await sendTextMessage(from, responseText);
-          sessions[from].history.push({ type: 'sent', message: responseText });
-          saveSessions(); // Guardar después de enviar la respuesta al audio
-          fs.unlink(audioPath, (err) => {
-            if (err) console.error('Error deleting audio file:', err);
-          });
-        }
-      } else if (message.type === 'image') {
-        const mediaId = message.image?.id;
-        if (mediaId) {
-          const imagePath = await downloadMedia(mediaId, 'image');
-          responseText = await processImageMessage(imagePath, sessions[from].history);
-          await sendTextMessage(from, responseText);
-          sessions[from].history.push({ type: 'sent', message: responseText });
-          saveSessions(); // Guardar después de enviar la respuesta a la imagen
-          fs.unlink(imagePath, (err) => {
-            if (err) console.error('Error deleting image file:', err);
-          });
-        } else {
-          console.log(`ℹ️ Unsupported message type received: ${message.type}`);
-          const unsupportedMessage = '👋 Hola, por ahora solo puedo procesar mensajes de texto, audios e imágenes.';
-          await sendTextMessage(from, unsupportedMessage);
-          sessions[from].history.push({ type: 'sent', message: unsupportedMessage });
-          saveSessions(); // Guardar después de enviar el mensaje de no soportado
-        }
+    const response = await axios.post(url, data, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
       }
-    } catch (processingError) {
-      console.error('🚨 Error during message processing:', processingError);
-      const errorMessage = '⚠️ Hubo un problema procesando tu mensaje. Intenta nuevamente más tarde.';
-      await sendTextMessage(from, errorMessage);
-      sessions[from].history.push({ type: 'sent', message: errorMessage });
-      saveSessions(); // Guardar después de enviar el mensaje de error
-    }
-
-    res.sendStatus(200);
-  } catch (error) {
-    console.error('🚨 Error handling incoming webhook:', error);
-    res.sendStatus(500);
-  }
-}
-
-// Download media file from WhatsApp servers
-async function downloadMedia(mediaId, type) {
-  try {
-    console.log(`⬇️ Downloading media ID: ${mediaId}`);
-
-    const urlResponse = await axios.get(
-      `${WHATSAPP_API_BASE}/${mediaId}`,
-      {
-        headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
-      }
-    );
-    const mediaUrl = urlResponse.data.url;
-
-    const mediaResponse = await axios.get(mediaUrl, {
-      headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
-      responseType: 'stream',
     });
-
-    const ext = type === 'audio' ? '.ogg' : '.jpg';
-    const filePath = path.resolve(`/tmp/temp_${mediaId}${ext}`);
-    const writer = fs.createWriteStream(filePath);
-
-    mediaResponse.data.pipe(writer);
-
-    return new Promise((resolve, reject) => {
-      writer.on('finish', () => resolve(filePath));
-      writer.on('error', reject);
-    });
+    console.log('Mensaje enviado:', response.data); // Verifica que se ha enviado correctamente
   } catch (error) {
-    console.error('🚨 Error downloading media:', error);
-    throw error;
+    console.error('Error al enviar mensaje:', error.response?.data || error.message);
   }
 }
 
-// Send text message back to WhatsApp user
-export async function sendTextMessage(to, text) {
-  try {
-    console.log(`✉️ Sending message to ${to}: ${text}`);
-
-    const url = `${WHATSAPP_API_BASE}/${WHATSAPP_PHONE_NUMBER_ID}/messages`;
-    const data = {
-      messaging_product: 'whatsapp',
-      to,
-      type: 'text',
-      text: { body: text },
-    };
-    const headers = {
-      Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}`,
-      'Content-Type': 'application/json',
-    };
-    await axios.post(url, data, { headers });
-  } catch (error) {
-    console.error('🚨 Error sending text message:', error.response?.data || error.message);
-  }
-}
+// Iniciar servidor
+app.listen(port, () => {
+  console.log(`Servidor escuchando en el puerto ${port}`);
+});
 
 
