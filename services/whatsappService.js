@@ -9,8 +9,11 @@ dotenv.config();
 const WHATSAPP_PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
 const WHATSAPP_ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const WHATSAPP_VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
-
 const WHATSAPP_API_BASE = 'https://graph.facebook.com/v17.0';
+
+// 🧠 Memoria de sesiones
+const sessions = {}; 
+// Estructura: { "numero_usuario": { greeted: true/false, history: [{ type: 'sent'/'received', message: 'texto' }] } }
 
 // Verify webhook for GET challenge
 export function verifyWebhook(req, res) {
@@ -55,11 +58,29 @@ export async function handleIncomingMessage(req, res) {
 
     console.log(`📨 Received message from: ${from} - Type: ${message.type}`);
 
+    // Inicializar sesión si no existe
+    if (!sessions[from]) {
+      sessions[from] = { greeted: false, history: [] };
+    }
+
+    // Guardar mensaje recibido en historial
+    const userMessage = message.text?.body || '[Contenido no textual recibido]';
+    sessions[from].history.push({ type: 'received', message: userMessage });
+
+    // Saludar solo una vez
+    if (!sessions[from].greeted) {
+      const greeting = "¡Hola! 👋 Soy *Mario*, agente del equipo de **Hernán Oviedo**. Estoy aquí para acompañarte en tu proceso como parte de nuestro programa *Negocios Híbridos* 🚀.\n\nMi misión es ayudarte a llevar tu negocio físico al mundo digital, paso a paso y de manera efectiva. ¡Vamos a hacerlo juntos!";
+      await sendTextMessage(from, greeting);
+      sessions[from].greeted = true;
+      sessions[from].history.push({ type: 'sent', message: greeting });
+    }
+
     try {
       if (message.type === 'text') {
-        const text = message.text.body;
-        const responseText = await processTextMessage(text);
+        const responseText = await processTextMessage(userMessage);
         await sendTextMessage(from, responseText);
+        sessions[from].history.push({ type: 'sent', message: responseText });
+
       } else if (message.type === 'audio' || message.type === 'voice') {
         const mediaId = message.audio?.id || message.voice?.id;
         if (mediaId) {
@@ -67,6 +88,7 @@ export async function handleIncomingMessage(req, res) {
           const transcription = await processAudioMessage(audioPath);
           const responseText = await processTextMessage(transcription);
           await sendTextMessage(from, responseText);
+          sessions[from].history.push({ type: 'sent', message: responseText });
           fs.unlink(audioPath, (err) => {
             if (err) console.error('Error deleting audio file:', err);
           });
@@ -77,17 +99,22 @@ export async function handleIncomingMessage(req, res) {
           const imagePath = await downloadMedia(mediaId, 'image');
           const responseText = await processImageMessage(imagePath);
           await sendTextMessage(from, responseText);
+          sessions[from].history.push({ type: 'sent', message: responseText });
           fs.unlink(imagePath, (err) => {
             if (err) console.error('Error deleting image file:', err);
           });
         }
       } else {
         console.log(`ℹ️ Unsupported message type received: ${message.type}`);
-        await sendTextMessage(from, '👋 Hola, en este momento solo puedo responder texto, audios e imágenes.');
+        const unsupportedMessage = '👋 Hola, por ahora solo puedo procesar mensajes de texto, audios e imágenes.';
+        await sendTextMessage(from, unsupportedMessage);
+        sessions[from].history.push({ type: 'sent', message: unsupportedMessage });
       }
     } catch (processingError) {
       console.error('🚨 Error during message processing:', processingError);
-      await sendTextMessage(from, '⚠️ Hubo un problema procesando tu mensaje. Intenta nuevamente más tarde.');
+      const errorMessage = '⚠️ Hubo un problema procesando tu mensaje. Intenta nuevamente más tarde.';
+      await sendTextMessage(from, errorMessage);
+      sessions[from].history.push({ type: 'sent', message: errorMessage });
     }
 
     res.sendStatus(200);
@@ -102,7 +129,6 @@ async function downloadMedia(mediaId, type) {
   try {
     console.log(`⬇️ Downloading media ID: ${mediaId}`);
     
-    // Get media URL
     const urlResponse = await axios.get(
       `${WHATSAPP_API_BASE}/${mediaId}`,
       {
@@ -111,7 +137,6 @@ async function downloadMedia(mediaId, type) {
     );
     const mediaUrl = urlResponse.data.url;
 
-    // Get media file
     const mediaResponse = await axios.get(mediaUrl, {
       headers: { Authorization: `Bearer ${WHATSAPP_ACCESS_TOKEN}` },
       responseType: 'stream',
